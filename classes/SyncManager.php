@@ -22,7 +22,7 @@ class SyncManager
     protected $outputCallback = null;
 
     const CHUNK_SIZE = 2097152;
-    const BATCH_MAX_FILES = 200;
+    const BATCH_MAX_FILES = 50;
 
     public function __construct(Server $server)
     {

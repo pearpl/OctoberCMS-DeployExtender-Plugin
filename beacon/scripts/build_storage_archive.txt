@@ -2,6 +2,8 @@
 // Creates a ZIP archive of a storage directory on the remote server.
 // $VARS['directory'] = relative path under storage/ (e.g., 'app/uploads')
 
+@set_time_limit(300);
+
 $directory = $VARS['directory'] ?? '';
 
 if (empty($directory)) {

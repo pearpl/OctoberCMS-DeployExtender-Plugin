@@ -4,9 +4,11 @@
 // $VARS['offset']    = number of files to skip (sorted alphabetically)
 // $VARS['limit']     = max number of files to include
 
+@set_time_limit(300);
+
 $directory = $VARS['directory'] ?? '';
 $offset = (int) ($VARS['offset'] ?? 0);
-$limit = (int) ($VARS['limit'] ?? 200);
+$limit = (int) ($VARS['limit'] ?? 50);
 
 if (empty($directory)) {
     return ['status' => 'error', 'error' => 'No directory specified'];
@@ -56,6 +58,7 @@ try {
         $fullPath = $sourcePath . '/' . $relativePath;
         if (file_exists($fullPath)) {
             $zip->addFile($fullPath, 'storage/' . $directory . '/' . $relativePath);
+            $zip->setCompressionName('storage/' . $directory . '/' . $relativePath, ZipArchive::CM_STORE);
             $count++;
         }
     }

@@ -2,6 +2,8 @@
 // Returns file count and total size for a storage directory.
 // $VARS['directory'] = relative path under storage/
 
+@set_time_limit(120);
+
 $directory = $VARS['directory'] ?? '';
 
 if (empty($directory)) {

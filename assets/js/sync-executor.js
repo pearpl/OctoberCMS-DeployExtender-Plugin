@@ -58,6 +58,14 @@
                 self.onFailed();
                 return true;
             },
+            error: function (jqXHR) {
+                var msg = 'Server error (' + jqXHR.status + ')';
+                try {
+                    msg = jqXHR.getResponseHeader('X-OCTOBER-ERROR-MESSAGE') || msg;
+                } catch(e) {}
+                self.updateLogEntry(self.currentStep, 'error', msg);
+                self.onFailed();
+            },
             success: function (data) {
                 if (data.continue) {
                     self.updateLogProgress(self.currentStep, data.message || '');
