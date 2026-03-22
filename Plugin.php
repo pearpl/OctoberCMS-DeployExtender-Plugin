@@ -5,7 +5,7 @@
  *
  * @author     Pear Interactive <hello@pear.pl>
  * @link       https://github.com/pearpl/OctoberCMS-DeployExtender-Plugin
- * @license    MIT
+ * @license    proprietary
  */
 
 use Backend;
