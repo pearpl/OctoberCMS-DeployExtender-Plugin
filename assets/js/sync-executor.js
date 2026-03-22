@@ -1,8 +1,10 @@
 /*
+ * Deploy Extender Plugin for October CMS
  * SyncExecutor — Step-based sync progress UI
  *
- * Executes sync operations step-by-step via AJAX,
- * showing a live progress log in the popup window.
+ * @author     Pear Interactive <hello@pear.pl>
+ * @link       https://github.com/pearpl/OctoberCMS-DeployExtender-Plugin
+ * @license    MIT
  */
 +function ($) { "use strict";
 

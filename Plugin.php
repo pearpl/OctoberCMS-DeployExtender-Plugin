@@ -1,5 +1,13 @@
 <?php namespace Pear\DeployExtender;
 
+/**
+ * Deploy Extender Plugin for October CMS
+ *
+ * @author     Pear Interactive <hello@pear.pl>
+ * @link       https://github.com/pearpl/OctoberCMS-DeployExtender-Plugin
+ * @license    MIT
+ */
+
 use Backend;
 use Event;
 use Flash;
@@ -39,19 +47,11 @@ class Plugin extends PluginBase
         $this->registerConsoleCommand('deployextender.deploy-uploads', \Pear\DeployExtender\Console\DeployUploads::class);
     }
 
-    /**
-     * Extend the deploy form with uploads checkbox
-     */
     protected function extendDeployForm()
     {
         Event::listen('backend.form.extendFields', function ($widget) {
-            if (!$widget->model instanceof Server) {
-                return;
-            }
-
-            if ($widget->alias !== 'deploy') {
-                return;
-            }
+            if (!$widget->model instanceof Server) return;
+            if ($widget->alias !== 'deploy') return;
 
             $widget->addFields([
                 'deploy_uploads' => [
@@ -65,15 +65,9 @@ class Plugin extends PluginBase
             ]);
         });
 
-        // Extend the manage form with sync action partials
         Event::listen('backend.form.extendFields', function ($widget) {
-            if (!$widget->model instanceof Server) {
-                return;
-            }
-
-            if ($widget->getContext() !== 'manage') {
-                return;
-            }
+            if (!$widget->model instanceof Server) return;
+            if ($widget->getContext() !== 'manage') return;
 
             $widget->addFields([
                 '_action_sync_push' => [
@@ -92,22 +86,17 @@ class Plugin extends PluginBase
         });
     }
 
-    /**
-     * Extend the Servers controller with sync handlers and uploads deploy.
-     */
     protected function extendServersController()
     {
         \RainLab\Deploy\Controllers\Servers::extend(function ($controller) {
 
             $controller->addJs('/plugins/pear/deployextender/assets/js/sync-executor.js');
 
-            // Handler: backup remote database (full dump download)
             $controller->addDynamicMethod('manage_onBackupRemoteDb', function () use ($controller) {
                 $server = Server::findOrFail(post('server_id'));
                 $manager = new SyncManager($server);
 
                 try {
-                    // Export full remote database (no exclusions)
                     $result = $manager->transmitCustomScript('db_export', [
                         'exclude_tables' => [],
                     ]);
@@ -119,16 +108,12 @@ class Plugin extends PluginBase
                     $tableCount = count($result['tables'] ?? []);
                     $remoteFileSize = $result['size'] ?? 0;
 
-                    // Download to local storage
                     $localPath = storage_path('app/deploy-backups/remote-' . $server->server_name . '-' . date('Y-m-d_His') . '.sql');
                     \File::makeDirectory(dirname($localPath), 0755, true, true);
 
                     $manager->downloadRemoteFilePublic($result['file'], $localPath, $remoteFileSize);
 
-                    // Cleanup remote temp file
-                    $manager->transmitCustomScript('cleanup_file', [
-                        'file' => $result['file'],
-                    ]);
+                    $manager->transmitCustomScript('cleanup_file', ['file' => $result['file']]);
 
                     $sizeFormatted = round(filesize($localPath) / 1024 / 1024, 2);
                     Flash::success("Remote database backup saved: {$localPath} ({$tableCount} tables, {$sizeFormatted} MB)");
@@ -139,7 +124,6 @@ class Plugin extends PluginBase
                 return Redirect::refresh();
             });
 
-            // Handler: load sync push confirmation popup
             $controller->addDynamicMethod('manage_onLoadSyncPush', function () use ($controller) {
                 $server = Server::findOrFail(post('server_id'));
                 $lastSync = SyncLog::latestForServer($server->id)
@@ -153,7 +137,6 @@ class Plugin extends PluginBase
                 return $controller->makePartial('$/pear/deployextender/partials/_sync_push_form.htm');
             });
 
-            // Handler: step-based sync push
             $controller->addDynamicMethod('manage_onSyncPushStep', function () use ($controller) {
                 @set_time_limit(3600);
                 $server = Server::findOrFail(post('server_id'));
@@ -246,7 +229,6 @@ class Plugin extends PluginBase
                 }
             });
 
-            // Handler: load sync pull confirmation popup
             $controller->addDynamicMethod('manage_onLoadSyncPull', function () use ($controller) {
                 $server = Server::findOrFail(post('server_id'));
                 $lastSync = SyncLog::latestForServer($server->id)
@@ -260,7 +242,6 @@ class Plugin extends PluginBase
                 return $controller->makePartial('$/pear/deployextender/partials/_sync_pull_form.htm');
             });
 
-            // Handler: step-based sync pull
             $controller->addDynamicMethod('manage_onSyncPullStep', function () use ($controller) {
                 @set_time_limit(3600);
                 $server = Server::findOrFail(post('server_id'));
@@ -355,13 +336,9 @@ class Plugin extends PluginBase
 
         });
 
-        // Intercept the deploy save to inject uploads step
         Event::listen('backend.page.beforeDisplay', function ($controller, $action, $params) {
-            if (!$controller instanceof \RainLab\Deploy\Controllers\Servers) {
-                return;
-            }
+            if (!$controller instanceof \RainLab\Deploy\Controllers\Servers) return;
 
-            // Override the deploy handler to add uploads support
             $controller->addDynamicMethod('manage_onSaveDeployToServer', function ($serverId) use ($controller) {
                 $server = Server::findOrFail($serverId);
                 $server->setDeployPreferences('deploy_config', post());
@@ -387,7 +364,6 @@ class Plugin extends PluginBase
                     $useFiles[] = self::addArchiveStep($deployActions, 'Media', 'buildMediaFiles');
                 }
 
-                // ---- DEPLOY EXTENDER: Uploads support ----
                 if (post('deploy_uploads') && is_dir(storage_path('app/uploads'))) {
                     $useFiles[] = self::addUploadsStep($deployActions);
                 }
@@ -444,9 +420,6 @@ class Plugin extends PluginBase
         });
     }
 
-    /**
-     * Build a standard archive deploy step.
-     */
     protected static function addArchiveStep(array &$steps, string $typeLabel, string $buildFunc, array $funcArgs = []): string
     {
         $fileId = md5(uniqid());
@@ -468,9 +441,6 @@ class Plugin extends PluginBase
         return $filePath;
     }
 
-    /**
-     * Build the uploads archive deploy step.
-     */
     protected static function addUploadsStep(array &$steps): string
     {
         $fileId = md5(uniqid());

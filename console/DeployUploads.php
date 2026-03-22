@@ -1,5 +1,13 @@
 <?php namespace Pear\DeployExtender\Console;
 
+/**
+ * Deploy Extender Plugin for October CMS
+ *
+ * @author     Pear Interactive <hello@pear.pl>
+ * @link       https://github.com/pearpl/OctoberCMS-DeployExtender-Plugin
+ * @license    MIT
+ */
+
 use Illuminate\Console\Command;
 use RainLab\Deploy\Models\Server;
 use RainLab\Deploy\Classes\ArchiveBuilder;

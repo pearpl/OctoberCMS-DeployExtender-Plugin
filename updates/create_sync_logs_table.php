@@ -1,5 +1,13 @@
 <?php namespace Pear\DeployExtender\Updates;
 
+/**
+ * Deploy Extender Plugin for October CMS
+ *
+ * @author     Pear Interactive <hello@pear.pl>
+ * @link       https://github.com/pearpl/OctoberCMS-DeployExtender-Plugin
+ * @license    MIT
+ */
+
 use Schema;
 use October\Rain\Database\Schema\Blueprint;
 use October\Rain\Database\Updates\Migration;

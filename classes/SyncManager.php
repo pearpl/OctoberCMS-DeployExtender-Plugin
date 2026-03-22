@@ -1,5 +1,13 @@
 <?php namespace Pear\DeployExtender\Classes;
 
+/**
+ * Deploy Extender Plugin for October CMS
+ *
+ * @author     Pear Interactive <hello@pear.pl>
+ * @link       https://github.com/pearpl/OctoberCMS-DeployExtender-Plugin
+ * @license    MIT
+ */
+
 use File as FileHelper;
 use RainLab\Deploy\Classes\ArchiveBuilder;
 use RainLab\Deploy\Models\Server;
@@ -7,19 +15,12 @@ use Pear\DeployExtender\Models\SyncLog;
 use Exception;
 use ZipArchive;
 
-/**
- * SyncManager handles bidirectional sync operations between local and remote servers.
- */
 class SyncManager
 {
     protected Server $server;
 
-    /** @var callable|null */
     protected $outputCallback = null;
 
-    /**
-     * Chunk size for file downloads from remote server (2MB).
-     */
     const CHUNK_SIZE = 2097152;
 
     public function __construct(Server $server)
@@ -27,25 +28,12 @@ class SyncManager
         $this->server = $server;
     }
 
-    /**
-     * Set callback for output messages (used by console commands).
-     */
     public function setOutputCallback(callable $callback): self
     {
         $this->outputCallback = $callback;
         return $this;
     }
 
-    // ==========================================
-    // PUSH Operations (Local → Remote)
-    // ==========================================
-
-    /**
-     * Push local database to remote server.
-     *
-     * @param bool $skipUsers Skip backend user tables
-     * @return array ['tables' => int, 'backup_path' => string]
-     */
     public function pushDatabase(bool $skipUsers = false): array
     {
         $this->output('Backing up remote database...');
@@ -72,15 +60,12 @@ class SyncManager
             throw new Exception('Remote database import failed: ' . ($importResult['error'] ?? 'Unknown error'));
         }
 
-        // Cleanup local temp file
         @unlink($localDumpPath);
 
-        // Cleanup remote temp file
         $this->transmitCustomScript('cleanup_file', [
             'file' => $uploadResult['path'],
         ]);
 
-        // Clear remote cache so October picks up new settings
         $this->output('Clearing remote cache...');
         $this->transmitCustomScript('clear_full_cache');
 
@@ -92,12 +77,6 @@ class SyncManager
         ];
     }
 
-    /**
-     * Push local storage directory to remote server.
-     *
-     * @param string $directory Relative path under storage/ (e.g., 'app/uploads')
-     * @return int Number of files synced
-     */
     public function pushStorage(string $directory): int
     {
         $sourcePath = storage_path($directory);
@@ -137,13 +116,9 @@ class SyncManager
             ]);
         }, 'extract_archive');
 
-        // Cleanup local temp file
         @unlink($archivePath);
-
-        // Small delay to avoid nonce collision with extract_archive call above
         usleep(150000);
 
-        // Cleanup remote temp file
         $this->transmitCustomScript('cleanup_file', [
             'file' => $uploadResult['path'],
         ]);
@@ -153,16 +128,6 @@ class SyncManager
         return $fileCount;
     }
 
-    // ==========================================
-    // PULL Operations (Remote → Local)
-    // ==========================================
-
-    /**
-     * Pull remote database to local server.
-     *
-     * @param bool $skipUsers Skip backend user tables
-     * @return array ['tables' => int, 'backup_path' => string]
-     */
     public function pullDatabase(bool $skipUsers = false): array
     {
         $this->output('Backing up local database...');
@@ -194,15 +159,12 @@ class SyncManager
         $this->output('Importing database locally...');
         DatabaseDumper::import($localSqlPath);
 
-        // Cleanup local temp file
         @unlink($localSqlPath);
 
-        // Cleanup remote temp file
         $this->transmitCustomScript('cleanup_file', [
             'file' => $exportResult['file'],
         ]);
 
-        // Clear local cache so October picks up new settings
         $this->output('Clearing local cache...');
         $this->clearLocalCache();
 
@@ -214,12 +176,6 @@ class SyncManager
         ];
     }
 
-    /**
-     * Pull remote storage directory to local server.
-     *
-     * @param string $directory Relative path under storage/ (e.g., 'app/uploads')
-     * @return int Number of files synced
-     */
     public function pullStorage(string $directory): int
     {
         $this->output("Building archive on remote: storage/{$directory}...");
@@ -253,7 +209,6 @@ class SyncManager
         $this->output("Extracting to local storage/{$directory}...");
         $fileCount = $this->extractArchive($localArchivePath, base_path());
 
-        // Cleanup
         @unlink($localArchivePath);
         $this->transmitCustomScript('cleanup_file', [
             'file' => $archiveResult['file'],
@@ -264,15 +219,6 @@ class SyncManager
         return $fileCount;
     }
 
-    // ==========================================
-    // Backup Operations
-    // ==========================================
-
-    /**
-     * Create a backup of the local database.
-     *
-     * @return string Path to backup file
-     */
     public function backupLocalDatabase(bool $skipUsers = false): string
     {
         $backupDir = storage_path('app/deploy-backups');
@@ -284,11 +230,6 @@ class SyncManager
         return $backupPath;
     }
 
-    /**
-     * Create a backup of the remote database.
-     *
-     * @return string Remote path to backup file
-     */
     public function backupRemoteDatabase(bool $skipUsers = false): string
     {
         $excludeTables = DatabaseDumper::ALWAYS_EXCLUDE;
@@ -307,13 +248,6 @@ class SyncManager
         return base64_decode($result['file']);
     }
 
-    // ==========================================
-    // Helper Methods
-    // ==========================================
-
-    /**
-     * Clear local October CMS cache after database changes.
-     */
     protected function clearLocalCache(): void
     {
         $cachePaths = [
@@ -339,7 +273,6 @@ class SyncManager
             }
         }
 
-        // Clear data cache from framework/cache/data
         $dataCachePath = storage_path('framework/cache/data');
         if (is_dir($dataCachePath)) {
             $files = new \RecursiveIteratorIterator(
@@ -356,11 +289,6 @@ class SyncManager
         }
     }
 
-    /**
-     * Verify the remote beacon is reachable before starting operations.
-     *
-     * @throws Exception if beacon is not reachable
-     */
     public function verifyBeaconConnectivity(): array
     {
         try {
@@ -374,10 +302,6 @@ class SyncManager
         }
     }
 
-    /**
-     * Execute a beacon call with automatic retry on nonce collisions (HTTP 200).
-     * Wraps RainLab Deploy's native transmit methods that lack retry logic.
-     */
     protected function transmitWithRetry(callable $callback, string $label = 'transmit', int $maxRetries = 3)
     {
         for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
@@ -397,10 +321,6 @@ class SyncManager
         }
     }
 
-    /**
-     * Transmit a custom beacon script from this plugin's directory.
-     * Automatically retries on nonce collisions (HTTP 200) with a short delay.
-     */
     public function transmitCustomScript(string $scriptName, array $vars = []): array
     {
         $scriptPath = plugins_path('pear/deployextender/beacon/scripts/' . $scriptName . '.txt');
@@ -423,8 +343,6 @@ class SyncManager
                 $isNonceCollision = str_contains($e->getMessage(), 'Code: 200');
 
                 if ($isNonceCollision && $attempt < $maxRetries) {
-                    // Nonce collision — beacon nonce resolution is ~100ms,
-                    // wait 150ms before retry to ensure a new nonce value
                     usleep(150000);
                     $this->output("Beacon nonce collision on '{$scriptName}', retrying ({$attempt}/{$maxRetries})...");
                     continue;
@@ -444,17 +362,11 @@ class SyncManager
         throw new Exception("Failed to execute beacon script '{$scriptName}' after {$maxRetries} attempts.");
     }
 
-    /**
-     * Download a file from the remote server in chunks (public accessor).
-     */
     public function downloadRemoteFilePublic(string $remoteFileBase64, string $localPath, int $totalSize = 0): void
     {
         $this->downloadRemoteFile($remoteFileBase64, $localPath, $totalSize);
     }
 
-    /**
-     * Download a file from the remote server in chunks.
-     */
     protected function downloadRemoteFile(string $remoteFileBase64, string $localPath, int $totalSize = 0): void
     {
         FileHelper::makeDirectory(dirname($localPath), 0755, true, true);
@@ -496,9 +408,6 @@ class SyncManager
         fclose($fp);
     }
 
-    /**
-     * Extract a ZIP archive to a destination directory.
-     */
     protected function extractArchive(string $archivePath, string $destination): int
     {
         $zip = new ZipArchive();
@@ -515,9 +424,6 @@ class SyncManager
         return $fileCount;
     }
 
-    /**
-     * Count files in a directory recursively.
-     */
     protected function countFilesInDir(string $path): int
     {
         if (!is_dir($path)) {

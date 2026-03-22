@@ -1,18 +1,20 @@
 <?php namespace Pear\DeployExtender\Classes;
 
+/**
+ * Deploy Extender Plugin for October CMS
+ *
+ * @author     Pear Interactive <hello@pear.pl>
+ * @link       https://github.com/pearpl/OctoberCMS-DeployExtender-Plugin
+ * @license    MIT
+ */
+
 use Db;
 use PDO;
 use Exception;
 use File as FileHelper;
 
-/**
- * DatabaseDumper handles local MySQL database export and import operations.
- */
 class DatabaseDumper
 {
-    /**
-     * Tables that should always be excluded from sync.
-     */
     const ALWAYS_EXCLUDE = [
         'rainlab_deploy_servers',
         'rainlab_deploy_server_keys',
@@ -26,9 +28,6 @@ class DatabaseDumper
         'system_request_logs',
     ];
 
-    /**
-     * Backend user tables excluded when --skip-users is used.
-     */
     const USER_TABLES = [
         'backend_users',
         'backend_user_groups',
@@ -39,14 +38,6 @@ class DatabaseDumper
         'backend_users_roles',
     ];
 
-    /**
-     * Export the database to a SQL file.
-     *
-     * @param string $outputPath Full path for the output SQL file
-     * @param bool $skipUsers Whether to exclude backend user tables
-     * @param array $extraExclude Additional tables to exclude
-     * @return array ['tables' => int, 'size' => int]
-     */
     public static function export(string $outputPath, bool $skipUsers = false, array $extraExclude = []): array
     {
         $pdo = Db::connection()->getPdo();
@@ -85,9 +76,6 @@ class DatabaseDumper
         ];
     }
 
-    /**
-     * Import a SQL dump file into the local database.
-     */
     public static function import(string $sqlPath): int
     {
         if (!file_exists($sqlPath)) {
@@ -113,9 +101,6 @@ class DatabaseDumper
         return $executed;
     }
 
-    /**
-     * Get list of all tables excluding specified ones.
-     */
     public static function getTables(PDO $pdo = null, array $excludeTables = []): array
     {
         $pdo = $pdo ?: Db::connection()->getPdo();
@@ -131,9 +116,6 @@ class DatabaseDumper
         return $tables;
     }
 
-    /**
-     * Dump a single table's structure and data.
-     */
     protected static function dumpTable(PDO $pdo, $fp, string $table): void
     {
         // Structure
@@ -184,9 +166,6 @@ class DatabaseDumper
         fwrite($fp, "\n");
     }
 
-    /**
-     * Split SQL dump into individual statements.
-     */
     protected static function splitStatements(string $sql): array
     {
         $statements = [];
