@@ -68,10 +68,13 @@
             },
             success: function (data) {
                 if (data.continue) {
-                    self.updateLogProgress(self.currentStep, data.message || '');
+                    self.updateLogProgress(self.currentStep, data.message || '', data.progress || null);
                     setTimeout(function () { self.executeStep(); }, 200);
                 } else {
                     var status = data.skipped ? 'skipped' : 'success';
+                    if (data.progress) {
+                        self.updateLogProgress(self.currentStep, '', data.progress);
+                    }
                     self.updateLogEntry(self.currentStep, status, data.message || '');
                     self.currentStep++;
                     setTimeout(function () { self.executeStep(); }, 300);
@@ -85,6 +88,12 @@
             + '<span class="sync-log-icon"><i class="icon-spinner icon-spin"></i></span> '
             + '<span class="sync-log-label">' + label + '</span>'
             + '<span class="sync-log-detail text-muted"></span>'
+            + '<div class="sync-log-progress" style="display:none;margin:4px 0 2px 22px">'
+            + '<div style="background:#e9ecef;border-radius:4px;height:6px;width:100%;overflow:hidden">'
+            + '<div class="sync-bar" style="background:#007bff;height:100%;width:0%;transition:width .3s"></div>'
+            + '</div>'
+            + '<div class="sync-log-stats text-muted" style="font-size:11px;margin-top:2px"></div>'
+            + '</div>'
             + '</div>';
         this.$log.append(html);
         this.$log.scrollTop(this.$log[0].scrollHeight);
@@ -107,9 +116,19 @@
         this.$log.scrollTop(this.$log[0].scrollHeight);
     };
 
-    SyncExecutor.prototype.updateLogProgress = function (index, detail) {
+    SyncExecutor.prototype.updateLogProgress = function (index, detail, progress) {
         var $entry = this.$log.find('[data-index="' + index + '"]');
         $entry.find('.sync-log-detail').text(' \u2014 ' + detail);
+
+        if (progress && progress.percent !== undefined) {
+            var $bar = $entry.find('.sync-log-progress');
+            $bar.show();
+            $bar.find('.sync-bar').css('width', progress.percent + '%');
+
+            var stats = progress.bytes + ' / ' + progress.totalBytes + '  \u2022  ' + progress.speed;
+            $bar.find('.sync-log-stats').text(stats);
+        }
+
         this.$log.scrollTop(this.$log[0].scrollHeight);
     };
 

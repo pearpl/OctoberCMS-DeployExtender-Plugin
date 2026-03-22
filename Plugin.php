@@ -107,30 +107,52 @@ class Plugin extends PluginBase
                     $state[$prefix . '_init'] = true;
                     $state[$prefix . '_offset'] = 0;
                     $state[$prefix . '_total'] = $info['total_count'];
+                    $state[$prefix . '_total_size'] = $info['total_size'];
                     $state[$prefix . '_synced'] = 0;
+                    $state[$prefix . '_bytes'] = 0;
+                    $state[$prefix . '_started'] = microtime(true);
                     session([$sessionKey => $state]);
                 }
 
-                $synced = ($direction === 'push')
+                $result = ($direction === 'push')
                     ? $manager->pushStorageBatch($directory, $state[$prefix . '_offset'], $batchSize)
                     : $manager->pullStorageBatch($directory, $state[$prefix . '_offset'], $batchSize);
 
                 $state[$prefix . '_offset'] += $batchSize;
-                $state[$prefix . '_synced'] += $synced;
+                $state[$prefix . '_synced'] += $result['files'];
+                $state[$prefix . '_bytes'] += $result['bytes'];
                 session([$sessionKey => $state]);
 
+                $elapsed = max(0.1, microtime(true) - $state[$prefix . '_started']);
+                $speed = $state[$prefix . '_bytes'] / $elapsed;
+                $percent = min(100, round(($state[$prefix . '_synced'] / $state[$prefix . '_total']) * 100));
+
+                $formatBytes = function (int $bytes) {
+                    $u = ['B','KB','MB','GB'];
+                    $i = 0; $s = (float)$bytes;
+                    while ($s >= 1024 && $i < 3) { $s /= 1024; $i++; }
+                    return round($s, 1) . ' ' . $u[$i];
+                };
+
                 if ($state[$prefix . '_offset'] < $state[$prefix . '_total']) {
-                    $totalBatches = (int) ceil($state[$prefix . '_total'] / $batchSize);
-                    $currentBatch = (int) ceil($state[$prefix . '_offset'] / $batchSize);
                     return [
-                        'message'  => "Batch {$currentBatch}/{$totalBatches} — {$state[$prefix . '_synced']}/{$state[$prefix . '_total']} files",
+                        'message'  => "{$state[$prefix . '_synced']}/{$state[$prefix . '_total']} files",
                         'continue' => true,
+                        'progress' => [
+                            'percent'    => $percent,
+                            'bytes'      => $formatBytes($state[$prefix . '_bytes']),
+                            'totalBytes' => $formatBytes($state[$prefix . '_total_size']),
+                            'speed'      => $formatBytes((int) $speed) . '/s',
+                        ],
                     ];
                 }
 
                 $state['total_files'] += $state[$prefix . '_synced'];
                 session([$sessionKey => $state]);
-                return ['message' => $state[$prefix . '_synced'] . ' files synced'];
+                return [
+                    'message' => "{$state[$prefix . '_synced']} files synced ({$formatBytes($state[$prefix . '_bytes'])})",
+                    'progress' => ['percent' => 100],
+                ];
             };
 
             $controller->addDynamicMethod('manage_onBackupRemoteDb', function () use ($controller) {

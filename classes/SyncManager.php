@@ -94,8 +94,8 @@ class SyncManager
         for ($batch = 0; $batch < $totalBatches; $batch++) {
             $offset = $batch * self::BATCH_MAX_FILES;
             $this->output("Processing batch " . ($batch + 1) . "/{$totalBatches}...");
-            $synced = $this->pushStorageBatch($directory, $offset, self::BATCH_MAX_FILES);
-            $totalSynced += $synced;
+            $result = $this->pushStorageBatch($directory, $offset, self::BATCH_MAX_FILES);
+            $totalSynced += $result['files'];
         }
 
         $this->output("Storage push complete: storage/{$directory} ({$totalSynced} files)");
@@ -166,8 +166,8 @@ class SyncManager
         for ($batch = 0; $batch < $totalBatches; $batch++) {
             $offset = $batch * self::BATCH_MAX_FILES;
             $this->output("Processing batch " . ($batch + 1) . "/{$totalBatches}...");
-            $synced = $this->pullStorageBatch($directory, $offset, self::BATCH_MAX_FILES);
-            $totalSynced += $synced;
+            $result = $this->pullStorageBatch($directory, $offset, self::BATCH_MAX_FILES);
+            $totalSynced += $result['files'];
         }
 
         $this->output("Storage pull complete: storage/{$directory} ({$totalSynced} files)");
@@ -405,11 +405,11 @@ class SyncManager
         ];
     }
 
-    public function pushStorageBatch(string $directory, int $offset, int $limit): int
+    public function pushStorageBatch(string $directory, int $offset, int $limit): array
     {
         $sourcePath = storage_path($directory);
         $files = $this->getLocalFileBatch($directory, $offset, $limit);
-        if (empty($files)) return 0;
+        if (empty($files)) return ['files' => 0, 'bytes' => 0];
 
         $archivePath = storage_path('temp/deployextender-batch-' . time() . '-' . mt_rand(1000, 9999) . '.zip');
         FileHelper::makeDirectory(dirname($archivePath), 0755, true, true);
@@ -429,12 +429,13 @@ class SyncManager
         if ($count === 0) {
             $zip->close();
             @unlink($archivePath);
-            return 0;
+            return ['files' => 0, 'bytes' => 0];
         }
 
         $zip->close();
+        $batchBytes = filesize($archivePath);
 
-        $this->output("Uploading batch ({$count} files, {$this->formatBytes(filesize($archivePath))})...");
+        $this->output("Uploading batch ({$count} files, {$this->formatBytes($batchBytes)})...");
 
         $uploadResult = $this->transmitWithRetry(function () use ($archivePath) {
             return $this->server->transmitFile($archivePath);
@@ -451,10 +452,10 @@ class SyncManager
 
         $this->transmitCustomScript('cleanup_file', ['file' => $uploadResult['path']]);
 
-        return $count;
+        return ['files' => $count, 'bytes' => $batchBytes];
     }
 
-    public function pullStorageBatch(string $directory, int $offset, int $limit): int
+    public function pullStorageBatch(string $directory, int $offset, int $limit): array
     {
         $archiveResult = $this->transmitCustomScript('build_storage_batch', [
             'directory' => $directory,
@@ -467,20 +468,21 @@ class SyncManager
         }
 
         if (empty($archiveResult['file']) || ($archiveResult['files'] ?? 0) === 0) {
-            return 0;
+            return ['files' => 0, 'bytes' => 0];
         }
 
-        $this->output("Downloading batch ({$archiveResult['files']} files, {$this->formatBytes($archiveResult['size'] ?? 0)})...");
+        $batchBytes = $archiveResult['size'] ?? 0;
+        $this->output("Downloading batch ({$archiveResult['files']} files, {$this->formatBytes($batchBytes)})...");
 
         $localPath = storage_path('temp/deployextender-pull-batch-' . time() . '-' . mt_rand(1000, 9999) . '.zip');
-        $this->downloadRemoteFile($archiveResult['file'], $localPath, $archiveResult['size'] ?? 0);
+        $this->downloadRemoteFile($archiveResult['file'], $localPath, $batchBytes);
 
         $this->extractArchive($localPath, base_path());
 
         @unlink($localPath);
         $this->transmitCustomScript('cleanup_file', ['file' => $archiveResult['file']]);
 
-        return $archiveResult['files'] ?? 0;
+        return ['files' => $archiveResult['files'] ?? 0, 'bytes' => $batchBytes];
     }
 
     protected function getLocalFileBatch(string $directory, int $offset, int $limit): array
