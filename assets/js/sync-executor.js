@@ -57,10 +57,15 @@
                 return true;
             },
             success: function (data) {
-                var status = data.skipped ? 'skipped' : 'success';
-                self.updateLogEntry(self.currentStep, status, data.message || '');
-                self.currentStep++;
-                setTimeout(function () { self.executeStep(); }, 300);
+                if (data.continue) {
+                    self.updateLogProgress(self.currentStep, data.message || '');
+                    setTimeout(function () { self.executeStep(); }, 200);
+                } else {
+                    var status = data.skipped ? 'skipped' : 'success';
+                    self.updateLogEntry(self.currentStep, status, data.message || '');
+                    self.currentStep++;
+                    setTimeout(function () { self.executeStep(); }, 300);
+                }
             }
         });
     };
@@ -89,6 +94,12 @@
             $entry.find('.sync-log-detail').text(' \u2014 ' + detail);
         }
 
+        this.$log.scrollTop(this.$log[0].scrollHeight);
+    };
+
+    SyncExecutor.prototype.updateLogProgress = function (index, detail) {
+        var $entry = this.$log.find('[data-index="' + index + '"]');
+        $entry.find('.sync-log-detail').text(' \u2014 ' + detail);
         this.$log.scrollTop(this.$log[0].scrollHeight);
     };
 

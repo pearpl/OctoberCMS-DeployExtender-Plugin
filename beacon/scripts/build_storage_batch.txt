@@ -1,0 +1,83 @@
+// Beacon script: build_storage_batch
+// Creates a ZIP of a batch of files from a storage directory using offset/limit.
+// $VARS['directory'] = relative path under storage/
+// $VARS['offset']    = number of files to skip (sorted alphabetically)
+// $VARS['limit']     = max number of files to include
+
+$directory = $VARS['directory'] ?? '';
+$offset = (int) ($VARS['offset'] ?? 0);
+$limit = (int) ($VARS['limit'] ?? 200);
+
+if (empty($directory)) {
+    return ['status' => 'error', 'error' => 'No directory specified'];
+}
+
+$sourcePath = __DIR__ . '/../storage/' . $directory;
+
+if (!is_dir($sourcePath)) {
+    return ['status' => 'error', 'error' => "Directory does not exist: storage/{$directory}"];
+}
+
+$allFiles = [];
+$iterator = new RecursiveIteratorIterator(
+    new RecursiveDirectoryIterator($sourcePath, RecursiveDirectoryIterator::SKIP_DOTS)
+);
+
+foreach ($iterator as $item) {
+    if ($item->isFile()) {
+        $allFiles[] = substr($item->getPathname(), strlen($sourcePath) + 1);
+    }
+}
+
+sort($allFiles);
+$batch = array_slice($allFiles, $offset, $limit);
+
+if (empty($batch)) {
+    return ['status' => 'ok', 'file' => null, 'size' => 0, 'files' => 0];
+}
+
+$tempDir = __DIR__ . '/../storage/temp';
+if (!is_dir($tempDir)) {
+    mkdir($tempDir, 0755, true);
+}
+
+$safeName = str_replace(['/', '\\'], '-', $directory);
+$outputFile = $tempDir . '/batch-' . $safeName . '-' . $offset . '-' . time() . '.zip';
+
+try {
+    $zip = new ZipArchive();
+
+    if ($zip->open($outputFile, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+        return ['status' => 'error', 'error' => 'Cannot create ZIP archive'];
+    }
+
+    $count = 0;
+    foreach ($batch as $relativePath) {
+        $fullPath = $sourcePath . '/' . $relativePath;
+        if (file_exists($fullPath)) {
+            $zip->addFile($fullPath, 'storage/' . $directory . '/' . $relativePath);
+            $count++;
+        }
+    }
+
+    if ($count === 0) {
+        $zip->close();
+        @unlink($outputFile);
+        return ['status' => 'ok', 'file' => null, 'size' => 0, 'files' => 0];
+    }
+
+    if ($zip->close() !== true) {
+        @unlink($outputFile);
+        return ['status' => 'error', 'error' => 'Failed to finalize ZIP archive'];
+    }
+
+    return [
+        'status' => 'ok',
+        'file'   => base64_encode($outputFile),
+        'size'   => filesize($outputFile),
+        'files'  => $count,
+    ];
+
+} catch (Exception $e) {
+    return ['status' => 'error', 'error' => $e->getMessage()];
+}

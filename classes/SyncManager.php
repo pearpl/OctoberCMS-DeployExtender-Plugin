@@ -22,6 +22,7 @@ class SyncManager
     protected $outputCallback = null;
 
     const CHUNK_SIZE = 2097152;
+    const BATCH_MAX_FILES = 200;
 
     public function __construct(Server $server)
     {
@@ -79,53 +80,26 @@ class SyncManager
 
     public function pushStorage(string $directory): int
     {
-        $sourcePath = storage_path($directory);
-        if (!is_dir($sourcePath)) {
-            $this->output("Directory does not exist locally: {$directory}. Skipping.");
-            return 0;
-        }
-
-        $fileCount = $this->countFilesInDir($sourcePath);
-        if ($fileCount === 0) {
+        $info = $this->getLocalStorageInfo($directory);
+        if ($info['total_count'] === 0) {
             $this->output("No files found in local storage/{$directory}. Skipping.");
             return 0;
         }
 
-        $this->output("Building archive of storage/{$directory}...");
-        $archivePath = storage_path('temp/deployextender-storage-' . str_replace('/', '-', $directory) . '-' . time() . '.zip');
-        FileHelper::makeDirectory(dirname($archivePath), 0755, true, true);
+        $this->output("Found {$info['total_count']} files ({$this->formatBytes($info['total_size'])}) in storage/{$directory}");
 
-        ArchiveBuilder::instance()->buildArchive($archivePath, [
-            'dirsSrc' => ['storage/' . $directory => $sourcePath],
-        ]);
+        $totalBatches = (int) ceil($info['total_count'] / self::BATCH_MAX_FILES);
+        $totalSynced = 0;
 
-        $fileCount = $this->countFilesInDir($sourcePath);
-        $this->output("Archive built: {$this->formatBytes(filesize($archivePath))} ({$fileCount} files)");
+        for ($batch = 0; $batch < $totalBatches; $batch++) {
+            $offset = $batch * self::BATCH_MAX_FILES;
+            $this->output("Processing batch " . ($batch + 1) . "/{$totalBatches}...");
+            $synced = $this->pushStorageBatch($directory, $offset, self::BATCH_MAX_FILES);
+            $totalSynced += $synced;
+        }
 
-        $this->output("Uploading storage/{$directory} to remote...");
-        $uploadResult = $this->transmitWithRetry(function () use ($archivePath) {
-            return $this->server->transmitFile($archivePath);
-        }, 'transmitFile');
-
-        $this->output("Extracting on remote server...");
-        $this->transmitWithRetry(function () use ($archivePath, $uploadResult) {
-            return $this->server->transmitScript('extract_archive', [
-                'files' => [
-                    $archivePath => base64_decode($uploadResult['path']),
-                ],
-            ]);
-        }, 'extract_archive');
-
-        @unlink($archivePath);
-        usleep(150000);
-
-        $this->transmitCustomScript('cleanup_file', [
-            'file' => $uploadResult['path'],
-        ]);
-
-        $this->output("Storage push complete: storage/{$directory}");
-
-        return $fileCount;
+        $this->output("Storage push complete: storage/{$directory} ({$totalSynced} files)");
+        return $totalSynced;
     }
 
     public function pullDatabase(bool $skipUsers = false): array
@@ -178,45 +152,26 @@ class SyncManager
 
     public function pullStorage(string $directory): int
     {
-        $this->output("Building archive on remote: storage/{$directory}...");
-
-        $archiveResult = $this->transmitCustomScript('build_storage_archive', [
-            'directory' => $directory,
-        ]);
-
-        if (($archiveResult['status'] ?? '') !== 'ok') {
-            $error = $archiveResult['error'] ?? 'Unknown error';
-            if (str_contains($error, 'does not exist')) {
-                $this->output("Directory does not exist on remote: storage/{$directory}. Skipping.");
-                return 0;
-            }
-            throw new Exception("Failed to build remote archive: {$error}");
-        }
-
-        // Empty directory — no files to sync
-        if (empty($archiveResult['file']) || ($archiveResult['files'] ?? 0) === 0) {
+        $info = $this->getRemoteStorageInfo($directory);
+        if ($info['total_count'] === 0) {
             $this->output("No files found in remote storage/{$directory}. Skipping.");
             return 0;
         }
 
-        $remoteFileSize = $archiveResult['size'] ?? 0;
-        $this->output("Remote archive built: {$this->formatBytes($remoteFileSize)}");
+        $this->output("Found {$info['total_count']} files ({$this->formatBytes($info['total_size'])}) on remote storage/{$directory}");
 
-        $this->output("Downloading storage/{$directory} from remote...");
-        $localArchivePath = storage_path('temp/deployextender-pull-storage-' . str_replace('/', '-', $directory) . '-' . time() . '.zip');
-        $this->downloadRemoteFile($archiveResult['file'], $localArchivePath, $remoteFileSize);
+        $totalBatches = (int) ceil($info['total_count'] / self::BATCH_MAX_FILES);
+        $totalSynced = 0;
 
-        $this->output("Extracting to local storage/{$directory}...");
-        $fileCount = $this->extractArchive($localArchivePath, base_path());
+        for ($batch = 0; $batch < $totalBatches; $batch++) {
+            $offset = $batch * self::BATCH_MAX_FILES;
+            $this->output("Processing batch " . ($batch + 1) . "/{$totalBatches}...");
+            $synced = $this->pullStorageBatch($directory, $offset, self::BATCH_MAX_FILES);
+            $totalSynced += $synced;
+        }
 
-        @unlink($localArchivePath);
-        $this->transmitCustomScript('cleanup_file', [
-            'file' => $archiveResult['file'],
-        ]);
-
-        $this->output("Storage pull complete: storage/{$directory}");
-
-        return $fileCount;
+        $this->output("Storage pull complete: storage/{$directory} ({$totalSynced} files)");
+        return $totalSynced;
     }
 
     public function backupLocalDatabase(bool $skipUsers = false): string
@@ -406,6 +361,146 @@ class SyncManager
         } while ($remaining > 0);
 
         fclose($fp);
+    }
+
+    public function getLocalStorageInfo(string $directory): array
+    {
+        $sourcePath = storage_path($directory);
+        if (!is_dir($sourcePath)) {
+            return ['total_count' => 0, 'total_size' => 0];
+        }
+
+        $count = 0;
+        $totalSize = 0;
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($sourcePath, \RecursiveDirectoryIterator::SKIP_DOTS)
+        );
+
+        foreach ($iterator as $file) {
+            if ($file->isFile()) {
+                $count++;
+                $totalSize += $file->getSize();
+            }
+        }
+
+        return ['total_count' => $count, 'total_size' => $totalSize];
+    }
+
+    public function getRemoteStorageInfo(string $directory): array
+    {
+        $result = $this->transmitCustomScript('list_storage_files', [
+            'directory' => $directory,
+        ]);
+
+        if (($result['status'] ?? '') !== 'ok') {
+            if (str_contains($result['error'] ?? '', 'does not exist')) {
+                return ['total_count' => 0, 'total_size' => 0];
+            }
+            throw new Exception('Failed to list remote files: ' . ($result['error'] ?? 'Unknown error'));
+        }
+
+        return [
+            'total_count' => $result['total_count'] ?? 0,
+            'total_size'  => $result['total_size'] ?? 0,
+        ];
+    }
+
+    public function pushStorageBatch(string $directory, int $offset, int $limit): int
+    {
+        $sourcePath = storage_path($directory);
+        $files = $this->getLocalFileBatch($directory, $offset, $limit);
+        if (empty($files)) return 0;
+
+        $archivePath = storage_path('temp/deployextender-batch-' . time() . '-' . mt_rand(1000, 9999) . '.zip');
+        FileHelper::makeDirectory(dirname($archivePath), 0755, true, true);
+
+        $zip = new ZipArchive();
+        $zip->open($archivePath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+
+        $count = 0;
+        foreach ($files as $relativePath) {
+            $fullPath = $sourcePath . '/' . $relativePath;
+            if (file_exists($fullPath)) {
+                $zip->addFile($fullPath, 'storage/' . $directory . '/' . $relativePath);
+                $count++;
+            }
+        }
+
+        if ($count === 0) {
+            $zip->close();
+            @unlink($archivePath);
+            return 0;
+        }
+
+        $zip->close();
+
+        $this->output("Uploading batch ({$count} files, {$this->formatBytes(filesize($archivePath))})...");
+
+        $uploadResult = $this->transmitWithRetry(function () use ($archivePath) {
+            return $this->server->transmitFile($archivePath);
+        }, 'transmitFile');
+
+        $this->transmitWithRetry(function () use ($archivePath, $uploadResult) {
+            return $this->server->transmitScript('extract_archive', [
+                'files' => [$archivePath => base64_decode($uploadResult['path'])],
+            ]);
+        }, 'extract_archive');
+
+        @unlink($archivePath);
+        usleep(100000);
+
+        $this->transmitCustomScript('cleanup_file', ['file' => $uploadResult['path']]);
+
+        return $count;
+    }
+
+    public function pullStorageBatch(string $directory, int $offset, int $limit): int
+    {
+        $archiveResult = $this->transmitCustomScript('build_storage_batch', [
+            'directory' => $directory,
+            'offset'    => $offset,
+            'limit'     => $limit,
+        ]);
+
+        if (($archiveResult['status'] ?? '') !== 'ok') {
+            throw new Exception('Failed to build remote batch: ' . ($archiveResult['error'] ?? 'Unknown error'));
+        }
+
+        if (empty($archiveResult['file']) || ($archiveResult['files'] ?? 0) === 0) {
+            return 0;
+        }
+
+        $this->output("Downloading batch ({$archiveResult['files']} files, {$this->formatBytes($archiveResult['size'] ?? 0)})...");
+
+        $localPath = storage_path('temp/deployextender-pull-batch-' . time() . '-' . mt_rand(1000, 9999) . '.zip');
+        $this->downloadRemoteFile($archiveResult['file'], $localPath, $archiveResult['size'] ?? 0);
+
+        $this->extractArchive($localPath, base_path());
+
+        @unlink($localPath);
+        $this->transmitCustomScript('cleanup_file', ['file' => $archiveResult['file']]);
+
+        return $archiveResult['files'] ?? 0;
+    }
+
+    protected function getLocalFileBatch(string $directory, int $offset, int $limit): array
+    {
+        $sourcePath = storage_path($directory);
+        if (!is_dir($sourcePath)) return [];
+
+        $allFiles = [];
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($sourcePath, \RecursiveDirectoryIterator::SKIP_DOTS)
+        );
+
+        foreach ($iterator as $file) {
+            if ($file->isFile()) {
+                $allFiles[] = substr($file->getPathname(), strlen($sourcePath) + 1);
+            }
+        }
+
+        sort($allFiles);
+        return array_slice($allFiles, $offset, $limit);
     }
 
     protected function extractArchive(string $archivePath, string $destination): int

@@ -92,6 +92,47 @@ class Plugin extends PluginBase
 
             $controller->addJs('/plugins/pear/deployextender/assets/js/sync-executor.js');
 
+            $processStorageBatch = function (string $direction, string $directory, string $prefix, array &$state, SyncManager $manager, string $sessionKey): array {
+                $batchSize = SyncManager::BATCH_MAX_FILES;
+
+                if (!isset($state[$prefix . '_init'])) {
+                    $info = ($direction === 'push')
+                        ? $manager->getLocalStorageInfo($directory)
+                        : $manager->getRemoteStorageInfo($directory);
+
+                    if ($info['total_count'] === 0) {
+                        return ['message' => 'No files to sync. Skipping.', 'skipped' => true];
+                    }
+
+                    $state[$prefix . '_init'] = true;
+                    $state[$prefix . '_offset'] = 0;
+                    $state[$prefix . '_total'] = $info['total_count'];
+                    $state[$prefix . '_synced'] = 0;
+                    session([$sessionKey => $state]);
+                }
+
+                $synced = ($direction === 'push')
+                    ? $manager->pushStorageBatch($directory, $state[$prefix . '_offset'], $batchSize)
+                    : $manager->pullStorageBatch($directory, $state[$prefix . '_offset'], $batchSize);
+
+                $state[$prefix . '_offset'] += $batchSize;
+                $state[$prefix . '_synced'] += $synced;
+                session([$sessionKey => $state]);
+
+                if ($state[$prefix . '_offset'] < $state[$prefix . '_total']) {
+                    $totalBatches = (int) ceil($state[$prefix . '_total'] / $batchSize);
+                    $currentBatch = (int) ceil($state[$prefix . '_offset'] / $batchSize);
+                    return [
+                        'message'  => "Batch {$currentBatch}/{$totalBatches} — {$state[$prefix . '_synced']}/{$state[$prefix . '_total']} files",
+                        'continue' => true,
+                    ];
+                }
+
+                $state['total_files'] += $state[$prefix . '_synced'];
+                session([$sessionKey => $state]);
+                return ['message' => $state[$prefix . '_synced'] . ' files synced'];
+            };
+
             $controller->addDynamicMethod('manage_onBackupRemoteDb', function () use ($controller) {
                 $server = Server::findOrFail(post('server_id'));
                 $manager = new SyncManager($server);
@@ -137,7 +178,7 @@ class Plugin extends PluginBase
                 return $controller->makePartial('$/pear/deployextender/partials/_sync_push_form.htm');
             });
 
-            $controller->addDynamicMethod('manage_onSyncPushStep', function () use ($controller) {
+            $controller->addDynamicMethod('manage_onSyncPushStep', function () use ($controller, $processStorageBatch) {
                 @set_time_limit(3600);
                 $server = Server::findOrFail(post('server_id'));
                 $step = post('step');
@@ -188,19 +229,13 @@ class Plugin extends PluginBase
                             if (empty($state['sync_media'])) {
                                 return ['message' => 'Skipped (not selected)', 'skipped' => true];
                             }
-                            $files = $manager->pushStorage('app/media');
-                            $state['total_files'] += $files;
-                            session([$sessionKey => $state]);
-                            return ['message' => $files . ' files synced'];
+                            return $processStorageBatch('push', 'app/media', 'media', $state, $manager, $sessionKey);
 
                         case 'uploads':
                             if (empty($state['sync_uploads'])) {
                                 return ['message' => 'Skipped (not selected)', 'skipped' => true];
                             }
-                            $files = $manager->pushStorage('app/uploads');
-                            $state['total_files'] += $files;
-                            session([$sessionKey => $state]);
-                            return ['message' => $files . ' files synced'];
+                            return $processStorageBatch('push', 'app/uploads', 'uploads', $state, $manager, $sessionKey);
 
                         case 'complete':
                             $syncLog = SyncLog::find($state['sync_log_id'] ?? 0);
@@ -242,7 +277,7 @@ class Plugin extends PluginBase
                 return $controller->makePartial('$/pear/deployextender/partials/_sync_pull_form.htm');
             });
 
-            $controller->addDynamicMethod('manage_onSyncPullStep', function () use ($controller) {
+            $controller->addDynamicMethod('manage_onSyncPullStep', function () use ($controller, $processStorageBatch) {
                 @set_time_limit(3600);
                 $server = Server::findOrFail(post('server_id'));
                 $step = post('step');
@@ -293,19 +328,13 @@ class Plugin extends PluginBase
                             if (empty($state['sync_media'])) {
                                 return ['message' => 'Skipped (not selected)', 'skipped' => true];
                             }
-                            $files = $manager->pullStorage('app/media');
-                            $state['total_files'] += $files;
-                            session([$sessionKey => $state]);
-                            return ['message' => $files . ' files synced'];
+                            return $processStorageBatch('pull', 'app/media', 'media', $state, $manager, $sessionKey);
 
                         case 'uploads':
                             if (empty($state['sync_uploads'])) {
                                 return ['message' => 'Skipped (not selected)', 'skipped' => true];
                             }
-                            $files = $manager->pullStorage('app/uploads');
-                            $state['total_files'] += $files;
-                            session([$sessionKey => $state]);
-                            return ['message' => $files . ' files synced'];
+                            return $processStorageBatch('pull', 'app/uploads', 'uploads', $state, $manager, $sessionKey);
 
                         case 'complete':
                             $syncLog = SyncLog::find($state['sync_log_id'] ?? 0);

@@ -1,0 +1,35 @@
+// Beacon script: list_storage_files
+// Returns file count and total size for a storage directory.
+// $VARS['directory'] = relative path under storage/
+
+$directory = $VARS['directory'] ?? '';
+
+if (empty($directory)) {
+    return ['status' => 'error', 'error' => 'No directory specified'];
+}
+
+$sourcePath = __DIR__ . '/../storage/' . $directory;
+
+if (!is_dir($sourcePath)) {
+    return ['status' => 'error', 'error' => "Directory does not exist: storage/{$directory}"];
+}
+
+$totalCount = 0;
+$totalSize = 0;
+
+$iterator = new RecursiveIteratorIterator(
+    new RecursiveDirectoryIterator($sourcePath, RecursiveDirectoryIterator::SKIP_DOTS)
+);
+
+foreach ($iterator as $item) {
+    if ($item->isFile()) {
+        $totalCount++;
+        $totalSize += $item->getSize();
+    }
+}
+
+return [
+    'status'      => 'ok',
+    'total_count' => $totalCount,
+    'total_size'  => $totalSize,
+];
