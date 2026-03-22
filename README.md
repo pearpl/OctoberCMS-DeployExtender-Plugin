@@ -196,3 +196,23 @@ Large files (database dumps, storage archives) are transferred using a chunked d
 ## License
 
 This plugin is proprietary software by Pear Interactive.
+
+## Changelog
+
+### 1.0.1
+
+- Batched storage sync — media and uploads are now synced in 50-file batches, preventing timeouts on large sites (1GB+).
+- Live progress bar with transferred/total bytes and transfer speed.
+- Auto-retry (2x) on timeout, 502, and server errors.
+- Fixed `ZipArchive::extractTo` permission errors on existing files.
+- Beacon scripts now use `set_time_limit(300)` and `CM_STORE` (no compression) for faster archive creation.
+
+### 1.0.0
+
+- Initial release.
+- Bidirectional database sync (push/pull) with automatic backups.
+- Storage sync for `app/media` and `app/uploads` directories.
+- Deploy uploads integration with RainLab Deploy workflow.
+- Selective table sync with user table skip option.
+- Sync logging with full operation history.
+- Console commands: `sync-push`, `sync-pull`, `deploy-uploads`.
