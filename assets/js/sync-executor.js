@@ -18,12 +18,16 @@
         this.$progress = $(config.progressSelector);
         this.$footer = $(config.footerSelector);
         this.currentStep = 0;
+        this.retries = 0;
+        this.maxRetries = 2;
+        this.requestTimeout = 180000; // 3 min
     };
 
     SyncExecutor.prototype.start = function () {
         this.$form.hide();
         this.$progress.show();
         this.currentStep = 0;
+        this.retries = 0;
         this.executeStep();
     };
 
@@ -49,24 +53,49 @@
             this.addLogEntry(step.label);
         }
 
+        var timeoutId = setTimeout(function () {
+            if (self.retries < self.maxRetries) {
+                self.retries++;
+                self.updateLogProgress(self.currentStep, 'Timeout, retrying (' + self.retries + '/' + self.maxRetries + ')...', null);
+                setTimeout(function () { self.executeStep(); }, 1000);
+            } else {
+                self.updateLogEntry(self.currentStep, 'error', 'Request timed out after ' + self.maxRetries + ' retries');
+                self.onFailed();
+            }
+        }, self.requestTimeout);
+
         $.request(this.handler, {
             data: requestData,
             progressBar: false,
             handleFlashMessage: function () { return true; },
             handleErrorMessage: function (msg) {
-                self.updateLogEntry(self.currentStep, 'error', msg);
-                self.onFailed();
+                clearTimeout(timeoutId);
+                if (self.retries < self.maxRetries) {
+                    self.retries++;
+                    self.updateLogProgress(self.currentStep, 'Error, retrying (' + self.retries + '/' + self.maxRetries + ')...', null);
+                    setTimeout(function () { self.executeStep(); }, 2000);
+                } else {
+                    self.updateLogEntry(self.currentStep, 'error', msg);
+                    self.onFailed();
+                }
                 return true;
             },
             error: function (jqXHR) {
-                var msg = 'Server error (' + jqXHR.status + ')';
-                try {
-                    msg = jqXHR.getResponseHeader('X-OCTOBER-ERROR-MESSAGE') || msg;
-                } catch(e) {}
-                self.updateLogEntry(self.currentStep, 'error', msg);
-                self.onFailed();
+                clearTimeout(timeoutId);
+                if (self.retries < self.maxRetries) {
+                    self.retries++;
+                    self.updateLogProgress(self.currentStep, 'Server error (' + jqXHR.status + '), retrying (' + self.retries + '/' + self.maxRetries + ')...', null);
+                    setTimeout(function () { self.executeStep(); }, 2000);
+                } else {
+                    var msg = 'Server error (' + jqXHR.status + ')';
+                    try { msg = jqXHR.getResponseHeader('X-OCTOBER-ERROR-MESSAGE') || msg; } catch(e) {}
+                    self.updateLogEntry(self.currentStep, 'error', msg);
+                    self.onFailed();
+                }
             },
             success: function (data) {
+                clearTimeout(timeoutId);
+                self.retries = 0;
                 if (data.continue) {
                     self.updateLogProgress(self.currentStep, data.message || '', data.progress || null);
                     setTimeout(function () { self.executeStep(); }, 200);
