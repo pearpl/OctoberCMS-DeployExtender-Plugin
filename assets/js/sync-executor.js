@@ -45,7 +45,9 @@
             $.extend(requestData, this.initData);
         }
 
-        this.addLogEntry(step.label);
+        if (!this.$log.find('[data-index="' + this.currentStep + '"]').length) {
+            this.addLogEntry(step.label);
+        }
 
         $.request(this.handler, {
             data: requestData,
