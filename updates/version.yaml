@@ -1,3 +1,7 @@
 1.0.0:
     - "Initialize plugin."
     - create_sync_logs_table.php
+1.0.1:
+    - "Batched storage sync with progress bar for large media/uploads (1GB+)."
+    - "Auto-retry on timeout and server errors."
+    - "Fixed file extraction permission errors."
