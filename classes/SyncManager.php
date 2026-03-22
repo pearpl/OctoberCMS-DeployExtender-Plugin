@@ -513,7 +513,39 @@ class SyncManager
         }
 
         $fileCount = $zip->numFiles;
-        $zip->extractTo($destination);
+
+        for ($i = 0; $i < $fileCount; $i++) {
+            $entryName = $zip->getNameIndex($i);
+            if ($entryName === false) continue;
+
+            $targetPath = $destination . '/' . $entryName;
+
+            if (substr($entryName, -1) === '/') {
+                FileHelper::makeDirectory($targetPath, 0755, true, true);
+                continue;
+            }
+
+            FileHelper::makeDirectory(dirname($targetPath), 0755, true, true);
+
+            if (file_exists($targetPath)) {
+                @chmod($targetPath, 0644);
+                @unlink($targetPath);
+            }
+
+            $stream = $zip->getStream($entryName);
+            if ($stream === false) continue;
+
+            $fp = fopen($targetPath, 'wb');
+            if ($fp === false) {
+                fclose($stream);
+                continue;
+            }
+
+            stream_copy_to_stream($stream, $fp);
+            fclose($fp);
+            fclose($stream);
+        }
+
         $zip->close();
 
         return $fileCount;
