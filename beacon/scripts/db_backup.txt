@@ -1,0 +1,106 @@
+// Beacon script: db_backup
+// Creates a backup of the remote database.
+// $VARS['exclude_tables'] = array of table names to exclude
+
+$envFile = __DIR__ . '/../.env';
+$env = [];
+
+if (file_exists($envFile)) {
+    foreach (file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+        $line = trim($line);
+        if ($line === '' || $line[0] === '#') continue;
+        if (strpos($line, '=') === false) continue;
+        list($key, $value) = array_map('trim', explode('=', $line, 2));
+        $value = trim($value, '"\'');
+        $env[$key] = $value;
+    }
+}
+
+$dbHost = $env['DB_HOST'] ?? '127.0.0.1';
+$dbPort = $env['DB_PORT'] ?? '3306';
+$dbName = $env['DB_DATABASE'] ?? '';
+$dbUser = $env['DB_USERNAME'] ?? '';
+$dbPass = $env['DB_PASSWORD'] ?? '';
+
+$excludeTables = $VARS['exclude_tables'] ?? [];
+
+try {
+    $pdo = new PDO(
+        "mysql:host={$dbHost};port={$dbPort};dbname={$dbName}",
+        $dbUser,
+        $dbPass,
+        [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES 'utf8mb4'"
+        ]
+    );
+
+    $tables = [];
+    $stmt = $pdo->query("SHOW TABLES");
+    while ($row = $stmt->fetch(PDO::FETCH_NUM)) {
+        if (!in_array($row[0], $excludeTables, true)) {
+            $tables[] = $row[0];
+        }
+    }
+
+    $backupDir = __DIR__ . '/../storage/app/deploy-backups';
+    if (!is_dir($backupDir)) {
+        mkdir($backupDir, 0755, true);
+    }
+
+    $outputFile = $backupDir . '/remote-backup-' . date('Y-m-d_His') . '.sql';
+    $fp = fopen($outputFile, 'w');
+
+    fwrite($fp, "-- Deploy Extender Remote Backup\n");
+    fwrite($fp, "-- Generated: " . date('Y-m-d H:i:s') . "\n");
+    fwrite($fp, "-- Tables: " . count($tables) . "\n\n");
+    fwrite($fp, "SET FOREIGN_KEY_CHECKS = 0;\n");
+    fwrite($fp, "SET SQL_MODE = \"NO_AUTO_VALUE_ON_ZERO\";\n");
+    fwrite($fp, "SET NAMES utf8mb4;\n\n");
+
+    foreach ($tables as $table) {
+        $create = $pdo->query("SHOW CREATE TABLE `" . str_replace('`', '``', $table) . "`")->fetch(PDO::FETCH_NUM);
+        fwrite($fp, "DROP TABLE IF EXISTS `" . str_replace('`', '``', $table) . "`;\n");
+        fwrite($fp, $create[1] . ";\n\n");
+
+        $rows = $pdo->query("SELECT * FROM `" . str_replace('`', '``', $table) . "`");
+        $batch = [];
+        $count = 0;
+
+        while ($row = $rows->fetch(PDO::FETCH_NUM)) {
+            $values = [];
+            foreach ($row as $v) {
+                $values[] = $v === null ? 'NULL' : $pdo->quote($v);
+            }
+            $batch[] = '(' . implode(',', $values) . ')';
+            $count++;
+
+            if ($count >= 100) {
+                fwrite($fp, "INSERT INTO `" . str_replace('`', '``', $table) . "` VALUES\n");
+                fwrite($fp, implode(",\n", $batch) . ";\n");
+                $batch = [];
+                $count = 0;
+            }
+        }
+
+        if (!empty($batch)) {
+            fwrite($fp, "INSERT INTO `" . str_replace('`', '``', $table) . "` VALUES\n");
+            fwrite($fp, implode(",\n", $batch) . ";\n");
+        }
+
+        fwrite($fp, "\n");
+    }
+
+    fwrite($fp, "SET FOREIGN_KEY_CHECKS = 1;\n");
+    fclose($fp);
+
+    return [
+        'status' => 'ok',
+        'file'   => base64_encode($outputFile),
+        'size'   => filesize($outputFile),
+        'tables' => count($tables),
+    ];
+
+} catch (Exception $e) {
+    return ['status' => 'error', 'error' => $e->getMessage()];
+}

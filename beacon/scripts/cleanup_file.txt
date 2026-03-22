@@ -1,0 +1,27 @@
+// Beacon script: cleanup_file
+// Removes a temporary file from the remote server.
+// $VARS['file'] = base64-encoded file path
+
+$filePath = base64_decode($VARS['file'] ?? '');
+
+if (empty($filePath)) {
+    return ['status' => 'error', 'error' => 'No file path specified'];
+}
+
+// Only allow deleting files in storage/temp for security
+$realPath = realpath($filePath);
+$tempDir = realpath(__DIR__ . '/../storage/temp');
+
+if ($realPath === false || $tempDir === false) {
+    return ['status' => 'ok'];
+}
+
+if (strpos($realPath, $tempDir) !== 0) {
+    return ['status' => 'error', 'error' => 'Can only delete files in storage/temp'];
+}
+
+if (file_exists($realPath)) {
+    @unlink($realPath);
+}
+
+return ['status' => 'ok'];

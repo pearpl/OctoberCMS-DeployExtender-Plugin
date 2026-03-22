@@ -1,0 +1,80 @@
+// Beacon script: build_storage_archive
+// Creates a ZIP archive of a storage directory on the remote server.
+// $VARS['directory'] = relative path under storage/ (e.g., 'app/uploads')
+
+$directory = $VARS['directory'] ?? '';
+
+if (empty($directory)) {
+    return ['status' => 'error', 'error' => 'No directory specified'];
+}
+
+$sourcePath = __DIR__ . '/../storage/' . $directory;
+
+if (!is_dir($sourcePath)) {
+    return ['status' => 'error', 'error' => "Directory does not exist: storage/{$directory}"];
+}
+
+$tempDir = __DIR__ . '/../storage/temp';
+if (!is_dir($tempDir)) {
+    mkdir($tempDir, 0755, true);
+}
+
+$safeName = str_replace(['/', '\\'], '-', $directory);
+$outputFile = $tempDir . '/storage-' . $safeName . '-' . time() . '.zip';
+
+try {
+    $zip = new ZipArchive();
+
+    if ($zip->open($outputFile, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+        return ['status' => 'error', 'error' => 'Cannot create ZIP archive'];
+    }
+
+    $basePath = realpath(__DIR__ . '/..');
+    $iterator = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($sourcePath, RecursiveDirectoryIterator::SKIP_DOTS),
+        RecursiveIteratorIterator::SELF_FIRST
+    );
+
+    $fileCount = 0;
+    foreach ($iterator as $item) {
+        $relativePath = 'storage/' . $directory . '/' . substr($item->getPathname(), strlen($sourcePath) + 1);
+
+        if ($item->isDir()) {
+            $zip->addEmptyDir($relativePath);
+        } else {
+            $zip->addFile($item->getPathname(), $relativePath);
+            $fileCount++;
+        }
+    }
+
+    // ZipArchive deletes the file on close() if no files were added
+    if ($fileCount === 0) {
+        $zip->close();
+        @unlink($outputFile);
+        return [
+            'status' => 'ok',
+            'file'   => null,
+            'size'   => 0,
+            'files'  => 0,
+        ];
+    }
+
+    if ($zip->close() !== true) {
+        @unlink($outputFile);
+        return ['status' => 'error', 'error' => 'Failed to finalize ZIP archive'];
+    }
+
+    if (!file_exists($outputFile)) {
+        return ['status' => 'error', 'error' => 'ZIP archive was not created'];
+    }
+
+    return [
+        'status' => 'ok',
+        'file'   => base64_encode($outputFile),
+        'size'   => filesize($outputFile),
+        'files'  => $fileCount,
+    ];
+
+} catch (Exception $e) {
+    return ['status' => 'error', 'error' => $e->getMessage()];
+}

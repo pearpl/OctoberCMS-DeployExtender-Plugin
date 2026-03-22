@@ -1,0 +1,46 @@
+// Beacon script: clear_full_cache
+// Clears all October CMS cache files on the remote server
+// (framework cache, CMS cache, compiled files, settings cache)
+
+$basePath = __DIR__ . '/..';
+
+// Remove framework bootstrap files
+@unlink($basePath . '/storage/framework/classes.php');
+@unlink($basePath . '/storage/framework/packages.php');
+@unlink($basePath . '/storage/framework/services.php');
+
+// Clear framework cache directory (settings, config, views etc.)
+$cacheDirs = [
+    $basePath . '/storage/framework/cache',
+    $basePath . '/storage/framework/views',
+    $basePath . '/storage/cms/cache',
+    $basePath . '/storage/cms/twig',
+    $basePath . '/storage/cms/combiner',
+];
+
+$cleared = 0;
+
+foreach ($cacheDirs as $dir) {
+    if (!is_dir($dir)) {
+        continue;
+    }
+
+    $iterator = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($dir, RecursiveDirectoryIterator::SKIP_DOTS),
+        RecursiveIteratorIterator::CHILD_FIRST
+    );
+
+    foreach ($iterator as $item) {
+        if ($item->isDir()) {
+            @rmdir($item->getRealPath());
+        } elseif ($item->getFilename() !== '.gitignore') {
+            @unlink($item->getRealPath());
+            $cleared++;
+        }
+    }
+}
+
+return [
+    'status' => 'ok',
+    'cleared' => $cleared,
+];

@@ -1,0 +1,7 @@
+modelClass: Pear\DeployExtender\Models\SyncLog
+title: pear.deployextender::lang.synclogs.list_title
+recordUrl: pear/deployextender/synclogs
+noRecordsMessage: No sync logs found.
+defaultSort:
+    column: started_at
+    direction: desc

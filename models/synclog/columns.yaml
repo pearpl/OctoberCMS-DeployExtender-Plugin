@@ -1,0 +1,45 @@
+columns:
+    id:
+        label: ID
+        searchable: false
+        invisible: true
+    server_name:
+        label: pear.deployextender::lang.synclogs.server_name
+        searchable: true
+    direction:
+        label: pear.deployextender::lang.synclogs.direction
+        type: text
+        sortable: true
+    type:
+        label: pear.deployextender::lang.synclogs.type
+        type: text
+        sortable: true
+    status:
+        label: pear.deployextender::lang.synclogs.status
+        type: text
+        sortable: true
+    tables_synced:
+        label: pear.deployextender::lang.synclogs.tables_synced
+        type: number
+    files_synced:
+        label: pear.deployextender::lang.synclogs.files_synced
+        type: number
+    users_skipped:
+        label: pear.deployextender::lang.synclogs.users_skipped
+        type: switch
+    backup_path:
+        label: pear.deployextender::lang.synclogs.backup_path
+        type: text
+        invisible: true
+    started_at:
+        label: pear.deployextender::lang.synclogs.started_at
+        type: datetime
+        sortable: true
+    completed_at:
+        label: pear.deployextender::lang.synclogs.completed_at
+        type: datetime
+        sortable: true
+    error_message:
+        label: pear.deployextender::lang.synclogs.error_message
+        type: text
+        invisible: true

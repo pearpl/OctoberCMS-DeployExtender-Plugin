@@ -1,0 +1,110 @@
+// Beacon script: db_import
+// Imports a SQL dump file into the remote database.
+// $VARS['file'] = base64-encoded path to the uploaded SQL file
+
+$envFile = __DIR__ . '/../.env';
+$env = [];
+
+if (file_exists($envFile)) {
+    foreach (file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+        $line = trim($line);
+        if ($line === '' || $line[0] === '#') continue;
+        if (strpos($line, '=') === false) continue;
+        list($key, $value) = array_map('trim', explode('=', $line, 2));
+        $value = trim($value, '"\'');
+        $env[$key] = $value;
+    }
+}
+
+$dbHost = $env['DB_HOST'] ?? '127.0.0.1';
+$dbPort = $env['DB_PORT'] ?? '3306';
+$dbName = $env['DB_DATABASE'] ?? '';
+$dbUser = $env['DB_USERNAME'] ?? '';
+$dbPass = $env['DB_PASSWORD'] ?? '';
+
+$sqlFile = base64_decode($VARS['file'] ?? '');
+
+if (!file_exists($sqlFile)) {
+    return ['status' => 'error', 'error' => 'SQL file not found on remote server'];
+}
+
+try {
+    $pdo = new PDO(
+        "mysql:host={$dbHost};port={$dbPort};dbname={$dbName}",
+        $dbUser,
+        $dbPass,
+        [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES 'utf8mb4'"
+        ]
+    );
+
+    $sql = file_get_contents($sqlFile);
+
+    // Split into statements (simple approach for well-formed dumps)
+    $statements = [];
+    $current = '';
+    $inString = false;
+    $stringChar = '';
+    $length = strlen($sql);
+
+    for ($i = 0; $i < $length; $i++) {
+        $char = $sql[$i];
+
+        if ($inString) {
+            $current .= $char;
+            if ($char === '\\' && $i + 1 < $length) {
+                $current .= $sql[++$i];
+                continue;
+            }
+            if ($char === $stringChar) {
+                $inString = false;
+            }
+            continue;
+        }
+
+        if ($char === '-' && $i + 1 < $length && $sql[$i + 1] === '-') {
+            while ($i < $length && $sql[$i] !== "\n") {
+                $i++;
+            }
+            continue;
+        }
+
+        if ($char === '\'' || $char === '"') {
+            $inString = true;
+            $stringChar = $char;
+            $current .= $char;
+            continue;
+        }
+
+        if ($char === ';') {
+            $trimmed = trim($current);
+            if (!empty($trimmed)) {
+                $statements[] = $trimmed;
+            }
+            $current = '';
+            continue;
+        }
+
+        $current .= $char;
+    }
+
+    $trimmed = trim($current);
+    if (!empty($trimmed)) {
+        $statements[] = $trimmed;
+    }
+
+    $executed = 0;
+    foreach ($statements as $stmt) {
+        $pdo->exec($stmt);
+        $executed++;
+    }
+
+    return [
+        'status'   => 'ok',
+        'executed' => $executed,
+    ];
+
+} catch (Exception $e) {
+    return ['status' => 'error', 'error' => $e->getMessage()];
+}

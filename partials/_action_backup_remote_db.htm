@@ -1,0 +1,20 @@
+<div class="deploy-action">
+    <div class="row">
+        <div class="col-md-8">
+            <h5>Backup Remote Database</h5>
+            <p>Download a full database dump from the remote server and save it locally to <code>storage/app/deploy-backups/</code></p>
+        </div>
+        <div class="col-md-4">
+            <div class="deploy-action-button">
+                <button
+                    class="btn btn-primary"
+                    data-request="onBackupRemoteDb"
+                    data-request-data="server_id: '<?= $formModel->id ?>'"
+                    data-request-confirm="Download a full database dump from the remote server?"
+                    data-stripe-load-indicator>
+                    Backup Remote DB
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,18 @@
+{
+    "name": "pear/deployextender-plugin",
+    "type": "october-plugin",
+    "description": "Extends RainLab Deploy with bidirectional database sync, uploads deployment, and automatic backups",
+    "keywords": ["octobercms", "deploy", "sync", "database", "uploads", "backup"],
+    "homepage": "https://pearinteractive.com",
+    "require": {
+        "composer/installers": "~1.0",
+        "rainlab/deploy-plugin": "^2.0"
+    },
+    "license": "proprietary",
+    "authors": [
+        {
+            "name": "Pear Interactive",
+            "email": "hello@pearinteractive.com"
+        }
+    ]
+}

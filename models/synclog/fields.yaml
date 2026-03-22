@@ -1,0 +1,51 @@
+fields:
+    server_name:
+        label: pear.deployextender::lang.synclogs.server_name
+        type: text
+        disabled: true
+    direction:
+        label: pear.deployextender::lang.synclogs.direction
+        type: text
+        disabled: true
+    type:
+        label: pear.deployextender::lang.synclogs.type
+        type: text
+        disabled: true
+    status:
+        label: pear.deployextender::lang.synclogs.status
+        type: text
+        disabled: true
+    tables_synced:
+        label: pear.deployextender::lang.synclogs.tables_synced
+        type: number
+        disabled: true
+    files_synced:
+        label: pear.deployextender::lang.synclogs.files_synced
+        type: number
+        disabled: true
+    users_skipped:
+        label: pear.deployextender::lang.synclogs.users_skipped
+        type: switch
+        disabled: true
+    backup_path:
+        label: pear.deployextender::lang.synclogs.backup_path
+        type: text
+        disabled: true
+    details:
+        label: pear.deployextender::lang.synclogs.details
+        type: textarea
+        disabled: true
+        size: small
+    error_message:
+        label: pear.deployextender::lang.synclogs.error_message
+        type: textarea
+        disabled: true
+        size: small
+    started_at:
+        label: pear.deployextender::lang.synclogs.started_at
+        type: datetime
+        disabled: true
+    completed_at:
+        label: pear.deployextender::lang.synclogs.completed_at
+        type: datetime
+        disabled: true

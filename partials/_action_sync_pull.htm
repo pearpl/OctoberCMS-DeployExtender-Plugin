@@ -1,0 +1,20 @@
+<div class="deploy-action">
+    <div class="row">
+        <div class="col-md-8">
+            <h5>Sync Pull: Remote → Local <span class="badge" style="background:#dc3545;color:#fff;font-size:10px;vertical-align:middle;">HIGH RISK</span></h5>
+            <p>Pull remote database and storage files to your local environment. A backup is created automatically before overwriting.</p>
+        </div>
+        <div class="col-md-4">
+            <div class="deploy-action-button">
+                <button
+                    class="btn btn-primary"
+                    data-control="popup"
+                    data-size="large"
+                    data-request-data="server_id: '<?= $formModel->id ?>'"
+                    data-handler="onLoadSyncPull">
+                    Sync Pull
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
