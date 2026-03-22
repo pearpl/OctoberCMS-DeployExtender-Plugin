@@ -58,7 +58,9 @@ class SyncManager
         $this->output("Exported {$exportResult['tables']} tables ({$this->formatBytes($exportResult['size'])})");
 
         $this->output('Uploading database to remote server...');
-        $uploadResult = $this->server->transmitFile($localDumpPath);
+        $uploadResult = $this->transmitWithRetry(function () use ($localDumpPath) {
+            return $this->server->transmitFile($localDumpPath);
+        }, 'transmitFile');
         $remoteSqlPath = base64_decode($uploadResult['path']);
 
         $this->output('Importing database on remote server...');
@@ -104,6 +106,12 @@ class SyncManager
             return 0;
         }
 
+        $fileCount = $this->countFilesInDir($sourcePath);
+        if ($fileCount === 0) {
+            $this->output("No files found in local storage/{$directory}. Skipping.");
+            return 0;
+        }
+
         $this->output("Building archive of storage/{$directory}...");
         $archivePath = storage_path('temp/deployextender-storage-' . str_replace('/', '-', $directory) . '-' . time() . '.zip');
         FileHelper::makeDirectory(dirname($archivePath), 0755, true, true);
@@ -116,14 +124,18 @@ class SyncManager
         $this->output("Archive built: {$this->formatBytes(filesize($archivePath))} ({$fileCount} files)");
 
         $this->output("Uploading storage/{$directory} to remote...");
-        $uploadResult = $this->server->transmitFile($archivePath);
+        $uploadResult = $this->transmitWithRetry(function () use ($archivePath) {
+            return $this->server->transmitFile($archivePath);
+        }, 'transmitFile');
 
         $this->output("Extracting on remote server...");
-        $this->server->transmitScript('extract_archive', [
-            'files' => [
-                $archivePath => base64_decode($uploadResult['path']),
-            ],
-        ]);
+        $this->transmitWithRetry(function () use ($archivePath, $uploadResult) {
+            return $this->server->transmitScript('extract_archive', [
+                'files' => [
+                    $archivePath => base64_decode($uploadResult['path']),
+                ],
+            ]);
+        }, 'extract_archive');
 
         // Cleanup local temp file
         @unlink($archivePath);
@@ -359,6 +371,29 @@ class SyncManager
                 . 'Please verify the server endpoint URL and that the beacon file is deployed. '
                 . 'Original error: ' . $e->getMessage()
             );
+        }
+    }
+
+    /**
+     * Execute a beacon call with automatic retry on nonce collisions (HTTP 200).
+     * Wraps RainLab Deploy's native transmit methods that lack retry logic.
+     */
+    protected function transmitWithRetry(callable $callback, string $label = 'transmit', int $maxRetries = 3)
+    {
+        for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
+            try {
+                return $callback();
+            } catch (Exception $e) {
+                $isNonceCollision = str_contains($e->getMessage(), 'Code: 200');
+
+                if ($isNonceCollision && $attempt < $maxRetries) {
+                    usleep(200000);
+                    $this->output("Nonce collision on '{$label}', retrying ({$attempt}/{$maxRetries})...");
+                    continue;
+                }
+
+                throw $e;
+            }
         }
     }
 
