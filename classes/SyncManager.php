@@ -23,6 +23,7 @@ class SyncManager
 
     const CHUNK_SIZE = 2097152;
     const BATCH_MAX_FILES = 50;
+    const BATCH_MAX_SIZE = 50 * 1024 * 1024; // 50MB - safe margin below typical 64MB upload limit
 
     public function __construct(Server $server)
     {
@@ -88,13 +89,39 @@ class SyncManager
 
         $this->output("Found {$info['total_count']} files ({$this->formatBytes($info['total_size'])}) in storage/{$directory}");
 
-        $totalBatches = (int) ceil($info['total_count'] / self::BATCH_MAX_FILES);
+        $allFiles = $this->getLocalFileBatch($directory, 0, PHP_INT_MAX);
+        $sourcePath = storage_path($directory);
         $totalSynced = 0;
+        $batchNum = 0;
+        $currentBatch = [];
+        $currentBatchSize = 0;
 
-        for ($batch = 0; $batch < $totalBatches; $batch++) {
-            $offset = $batch * self::BATCH_MAX_FILES;
-            $this->output("Processing batch " . ($batch + 1) . "/{$totalBatches}...");
-            $result = $this->pushStorageBatch($directory, $offset, self::BATCH_MAX_FILES);
+        foreach ($allFiles as $relativePath) {
+            $fullPath = $sourcePath . '/' . $relativePath;
+            if (!file_exists($fullPath)) continue;
+
+            $fileSize = filesize($fullPath);
+
+            if (!empty($currentBatch) && (
+                count($currentBatch) >= self::BATCH_MAX_FILES ||
+                $currentBatchSize + $fileSize > self::BATCH_MAX_SIZE
+            )) {
+                $batchNum++;
+                $this->output("Processing batch {$batchNum}...");
+                $result = $this->pushStorageBatchFiles($directory, $currentBatch);
+                $totalSynced += $result['files'];
+                $currentBatch = [];
+                $currentBatchSize = 0;
+            }
+
+            $currentBatch[] = $relativePath;
+            $currentBatchSize += $fileSize;
+        }
+
+        if (!empty($currentBatch)) {
+            $batchNum++;
+            $this->output("Processing batch {$batchNum}...");
+            $result = $this->pushStorageBatchFiles($directory, $currentBatch);
             $totalSynced += $result['files'];
         }
 
@@ -407,8 +434,57 @@ class SyncManager
 
     public function pushStorageBatch(string $directory, int $offset, int $limit): array
     {
-        $sourcePath = storage_path($directory);
         $files = $this->getLocalFileBatch($directory, $offset, $limit);
+        return $this->pushStorageBatchFiles($directory, $files);
+    }
+
+    /**
+     * Push a specific list of files, splitting into sub-batches if total size exceeds BATCH_MAX_SIZE.
+     */
+    public function pushStorageBatchFiles(string $directory, array $files): array
+    {
+        $sourcePath = storage_path($directory);
+        if (empty($files)) return ['files' => 0, 'bytes' => 0];
+
+        $subBatches = [];
+        $currentBatch = [];
+        $currentSize = 0;
+
+        foreach ($files as $relativePath) {
+            $fullPath = $sourcePath . '/' . $relativePath;
+            if (!file_exists($fullPath)) continue;
+
+            $fileSize = filesize($fullPath);
+
+            if (!empty($currentBatch) && $currentSize + $fileSize > self::BATCH_MAX_SIZE) {
+                $subBatches[] = $currentBatch;
+                $currentBatch = [];
+                $currentSize = 0;
+            }
+
+            $currentBatch[] = $relativePath;
+            $currentSize += $fileSize;
+        }
+
+        if (!empty($currentBatch)) {
+            $subBatches[] = $currentBatch;
+        }
+
+        $totalFiles = 0;
+        $totalBytes = 0;
+
+        foreach ($subBatches as $batchFiles) {
+            $result = $this->uploadStorageBatch($directory, $batchFiles);
+            $totalFiles += $result['files'];
+            $totalBytes += $result['bytes'];
+        }
+
+        return ['files' => $totalFiles, 'bytes' => $totalBytes];
+    }
+
+    protected function uploadStorageBatch(string $directory, array $files): array
+    {
+        $sourcePath = storage_path($directory);
         if (empty($files)) return ['files' => 0, 'bytes' => 0];
 
         $archivePath = storage_path('temp/deployextender-batch-' . time() . '-' . mt_rand(1000, 9999) . '.zip');
