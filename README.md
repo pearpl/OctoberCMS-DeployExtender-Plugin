@@ -199,6 +199,13 @@ This plugin is proprietary software by Pear Interactive.
 
 ## Changelog
 
+### 1.0.2
+
+- Fixed batch upload exceeding server `upload_max_filesize` — batches now capped at 50MB, auto-split into sub-batches when needed.
+- Fixed progress bar showing "undefined" stats on completion.
+- Session-resilient sync counters — accurate table/file totals in finalize step even with session loss.
+- Added remote extraction result verification on push — reports clear error if extraction fails on server.
+
 ### 1.0.1
 
 - Batched storage sync — media and uploads are now synced in 50-file batches, preventing timeouts on large sites (1GB+).
