@@ -238,23 +238,23 @@ class Plugin extends PluginBase
                             return ['message' => 'Sync session initialized for ' . $server->server_name];
 
                         case 'database':
-                            if (empty($state['sync_db'])) {
+                            if (!post('sync_db') && empty($state['sync_db'])) {
                                 return ['message' => 'Skipped (not selected)', 'skipped' => true];
                             }
-                            $result = $manager->pushDatabase($state['skip_users'] ?? false);
+                            $result = $manager->pushDatabase((bool) (post('skip_users') ?: ($state['skip_users'] ?? false)));
                             $state['total_tables'] = $result['tables'];
                             $state['backup_path'] = $result['backup_path'] ?? null;
                             session([$sessionKey => $state]);
                             return ['message' => $result['tables'] . ' tables synced'];
 
                         case 'media':
-                            if (empty($state['sync_media'])) {
+                            if (!post('sync_media') && empty($state['sync_media'])) {
                                 return ['message' => 'Skipped (not selected)', 'skipped' => true];
                             }
                             return $processStorageBatch('push', 'app/media', 'media', $state, $manager, $sessionKey);
 
                         case 'uploads':
-                            if (empty($state['sync_uploads'])) {
+                            if (!post('sync_uploads') && empty($state['sync_uploads'])) {
                                 return ['message' => 'Skipped (not selected)', 'skipped' => true];
                             }
                             return $processStorageBatch('push', 'app/uploads', 'uploads', $state, $manager, $sessionKey);
@@ -337,23 +337,23 @@ class Plugin extends PluginBase
                             return ['message' => 'Sync session initialized for ' . $server->server_name];
 
                         case 'database':
-                            if (empty($state['sync_db'])) {
+                            if (!post('sync_db') && empty($state['sync_db'])) {
                                 return ['message' => 'Skipped (not selected)', 'skipped' => true];
                             }
-                            $result = $manager->pullDatabase($state['skip_users'] ?? false);
+                            $result = $manager->pullDatabase((bool) (post('skip_users') ?: ($state['skip_users'] ?? false)));
                             $state['total_tables'] = $result['tables'];
                             $state['backup_path'] = $result['backup_path'] ?? null;
                             session([$sessionKey => $state]);
                             return ['message' => $result['tables'] . ' tables synced'];
 
                         case 'media':
-                            if (empty($state['sync_media'])) {
+                            if (!post('sync_media') && empty($state['sync_media'])) {
                                 return ['message' => 'Skipped (not selected)', 'skipped' => true];
                             }
                             return $processStorageBatch('pull', 'app/media', 'media', $state, $manager, $sessionKey);
 
                         case 'uploads':
-                            if (empty($state['sync_uploads'])) {
+                            if (!post('sync_uploads') && empty($state['sync_uploads'])) {
                                 return ['message' => 'Skipped (not selected)', 'skipped' => true];
                             }
                             return $processStorageBatch('pull', 'app/uploads', 'uploads', $state, $manager, $sessionKey);

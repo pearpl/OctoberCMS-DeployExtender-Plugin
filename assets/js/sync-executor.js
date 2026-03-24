@@ -44,10 +44,8 @@
                 step: step.code
             };
 
-        // Pass form data only on init step
-        if (step.code === 'init') {
-            $.extend(requestData, this.initData);
-        }
+        // Pass form data on every step for session-resilience
+        $.extend(requestData, this.initData);
 
         if (!this.$log.find('[data-index="' + this.currentStep + '"]').length) {
             this.addLogEntry(step.label);
