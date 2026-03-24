@@ -5,3 +5,8 @@
     - "Batched storage sync with progress bar for large media/uploads (1GB+)."
     - "Auto-retry on timeout and server errors."
     - "Fixed file extraction permission errors."
+1.0.2:
+    - "Fixed batch upload exceeding server upload_max_filesize (50MB size cap per batch)."
+    - "Fixed progress bar showing undefined stats on completion."
+    - "Session-resilient sync counters for accurate finalize stats."
+    - "Added remote extraction result verification on push."
