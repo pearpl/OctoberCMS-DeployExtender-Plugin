@@ -441,11 +441,22 @@ class SyncManager
             return $this->server->transmitFile($archivePath);
         }, 'transmitFile');
 
-        $this->transmitWithRetry(function () use ($archivePath, $uploadResult) {
+        $extractResult = $this->transmitWithRetry(function () use ($archivePath, $uploadResult) {
             return $this->server->transmitScript('extract_archive', [
                 'files' => [$archivePath => base64_decode($uploadResult['path'])],
             ]);
         }, 'extract_archive');
+
+        if (($extractResult['status'] ?? '') !== 'ok') {
+            @unlink($archivePath);
+            throw new Exception('Remote extraction failed: ' . ($extractResult['error'] ?? 'Unknown error'));
+        }
+
+        $failedFiles = array_filter($extractResult['files'] ?? [], function ($v) { return $v === 0; });
+        if (!empty($failedFiles)) {
+            @unlink($archivePath);
+            throw new Exception('Remote extraction failed for ' . count($failedFiles) . ' file(s). Check remote write permissions.');
+        }
 
         @unlink($archivePath);
         usleep(100000);

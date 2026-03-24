@@ -21,6 +21,7 @@
         this.retries = 0;
         this.maxRetries = 2;
         this.requestTimeout = 180000; // 3 min
+        this.syncStats = { total_tables: 0, total_files: 0, sync_log_id: 0 };
     };
 
     SyncExecutor.prototype.start = function () {
@@ -45,7 +46,7 @@
             };
 
         // Pass form data on every step for session-resilience
-        $.extend(requestData, this.initData);
+        $.extend(requestData, this.initData, this.syncStats);
 
         if (!this.$log.find('[data-index="' + this.currentStep + '"]').length) {
             this.addLogEntry(step.label);
@@ -94,6 +95,9 @@
             success: function (data) {
                 clearTimeout(timeoutId);
                 self.retries = 0;
+                if (data.sync_log_id) self.syncStats.sync_log_id = data.sync_log_id;
+                if (data.total_tables) self.syncStats.total_tables += data.total_tables;
+                if (data.synced_files) self.syncStats.total_files += data.synced_files;
                 if (data.continue) {
                     self.updateLogProgress(self.currentStep, data.message || '', data.progress || null);
                     setTimeout(function () { self.executeStep(); }, 200);

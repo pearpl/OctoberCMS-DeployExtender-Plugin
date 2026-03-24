@@ -151,7 +151,13 @@ class Plugin extends PluginBase
                 session([$sessionKey => $state]);
                 return [
                     'message' => "{$state[$prefix . '_synced']} files synced ({$formatBytes($state[$prefix . '_bytes'])})",
-                    'progress' => ['percent' => 100],
+                    'synced_files' => $state[$prefix . '_synced'],
+                    'progress' => [
+                        'percent'    => 100,
+                        'bytes'      => $formatBytes($state[$prefix . '_bytes']),
+                        'totalBytes' => $formatBytes($state[$prefix . '_total_size']),
+                        'speed'      => $formatBytes((int) $speed) . '/s',
+                    ],
                 ];
             };
 
@@ -235,7 +241,7 @@ class Plugin extends PluginBase
                                 'backup_path' => null,
                             ]]);
 
-                            return ['message' => 'Sync session initialized for ' . $server->server_name];
+                            return ['message' => 'Sync session initialized for ' . $server->server_name, 'sync_log_id' => $syncLog->id];
 
                         case 'database':
                             if (!post('sync_db') && empty($state['sync_db'])) {
@@ -245,7 +251,7 @@ class Plugin extends PluginBase
                             $state['total_tables'] = $result['tables'];
                             $state['backup_path'] = $result['backup_path'] ?? null;
                             session([$sessionKey => $state]);
-                            return ['message' => $result['tables'] . ' tables synced'];
+                            return ['message' => $result['tables'] . ' tables synced', 'total_tables' => $result['tables']];
 
                         case 'media':
                             if (!post('sync_media') && empty($state['sync_media'])) {
@@ -260,23 +266,26 @@ class Plugin extends PluginBase
                             return $processStorageBatch('push', 'app/uploads', 'uploads', $state, $manager, $sessionKey);
 
                         case 'complete':
-                            $syncLog = SyncLog::find($state['sync_log_id'] ?? 0);
+                            $totalTables = (int) (post('total_tables') ?: ($state['total_tables'] ?? 0));
+                            $totalFiles = (int) (post('total_files') ?: ($state['total_files'] ?? 0));
+                            $syncLog = SyncLog::find(post('sync_log_id') ?: ($state['sync_log_id'] ?? 0));
                             if ($syncLog) {
                                 $syncLog->markSuccess(
-                                    $state['total_tables'] ?? 0,
-                                    $state['total_files'] ?? 0,
+                                    $totalTables,
+                                    $totalFiles,
                                     $state['backup_path'] ?? null
                                 );
                             }
                             session()->forget($sessionKey);
-                            return ['message' => ($state['total_tables'] ?? 0) . ' tables, ' . ($state['total_files'] ?? 0) . ' files synced'];
+                            return ['message' => $totalTables . ' tables, ' . $totalFiles . ' files synced'];
 
                         default:
                             throw new Exception('Unknown sync step: ' . $step);
                     }
                 } catch (Exception $e) {
-                    if (!empty($state['sync_log_id'])) {
-                        $syncLog = SyncLog::find($state['sync_log_id']);
+                    $logId = post('sync_log_id') ?: ($state['sync_log_id'] ?? 0);
+                    if ($logId) {
+                        $syncLog = SyncLog::find($logId);
                         if ($syncLog && $syncLog->status === 'running') {
                             $syncLog->markError($e->getMessage());
                         }
@@ -334,7 +343,7 @@ class Plugin extends PluginBase
                                 'backup_path' => null,
                             ]]);
 
-                            return ['message' => 'Sync session initialized for ' . $server->server_name];
+                            return ['message' => 'Sync session initialized for ' . $server->server_name, 'sync_log_id' => $syncLog->id];
 
                         case 'database':
                             if (!post('sync_db') && empty($state['sync_db'])) {
@@ -344,7 +353,7 @@ class Plugin extends PluginBase
                             $state['total_tables'] = $result['tables'];
                             $state['backup_path'] = $result['backup_path'] ?? null;
                             session([$sessionKey => $state]);
-                            return ['message' => $result['tables'] . ' tables synced'];
+                            return ['message' => $result['tables'] . ' tables synced', 'total_tables' => $result['tables']];
 
                         case 'media':
                             if (!post('sync_media') && empty($state['sync_media'])) {
@@ -359,23 +368,26 @@ class Plugin extends PluginBase
                             return $processStorageBatch('pull', 'app/uploads', 'uploads', $state, $manager, $sessionKey);
 
                         case 'complete':
-                            $syncLog = SyncLog::find($state['sync_log_id'] ?? 0);
+                            $totalTables = (int) (post('total_tables') ?: ($state['total_tables'] ?? 0));
+                            $totalFiles = (int) (post('total_files') ?: ($state['total_files'] ?? 0));
+                            $syncLog = SyncLog::find(post('sync_log_id') ?: ($state['sync_log_id'] ?? 0));
                             if ($syncLog) {
                                 $syncLog->markSuccess(
-                                    $state['total_tables'] ?? 0,
-                                    $state['total_files'] ?? 0,
+                                    $totalTables,
+                                    $totalFiles,
                                     $state['backup_path'] ?? null
                                 );
                             }
                             session()->forget($sessionKey);
-                            return ['message' => ($state['total_tables'] ?? 0) . ' tables, ' . ($state['total_files'] ?? 0) . ' files synced'];
+                            return ['message' => $totalTables . ' tables, ' . $totalFiles . ' files synced'];
 
                         default:
                             throw new Exception('Unknown sync step: ' . $step);
                     }
                 } catch (Exception $e) {
-                    if (!empty($state['sync_log_id'])) {
-                        $syncLog = SyncLog::find($state['sync_log_id']);
+                    $logId = post('sync_log_id') ?: ($state['sync_log_id'] ?? 0);
+                    if ($logId) {
+                        $syncLog = SyncLog::find($logId);
                         if ($syncLog && $syncLog->status === 'running') {
                             $syncLog->markError($e->getMessage());
                         }
