@@ -199,6 +199,10 @@ This plugin is proprietary software by Pear Interactive.
 
 ## Changelog
 
+### 1.0.4
+
+- Fixed migration error when reinstalling plugin (table already exists).
+
 ### 1.0.3
 
 - Fixed composer dependency: support RainLab Deploy v2 and v3 (`^2.0 || ^3.0`).

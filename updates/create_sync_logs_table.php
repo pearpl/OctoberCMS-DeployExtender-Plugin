@@ -16,6 +16,10 @@ class CreateSyncLogsTable extends Migration
 {
     public function up()
     {
+        if (Schema::hasTable('pear_deployextender_sync_logs')) {
+            return;
+        }
+
         Schema::create('pear_deployextender_sync_logs', function (Blueprint $table) {
             $table->increments('id');
             $table->integer('server_id')->unsigned()->nullable()->index();
