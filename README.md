@@ -199,6 +199,10 @@ This plugin is proprietary software by Pear Interactive.
 
 ## Changelog
 
+### 1.0.3
+
+- Fixed composer dependency: support RainLab Deploy v2 and v3 (`^2.0 || ^3.0`).
+
 ### 1.0.2
 
 - Fixed batch upload exceeding server `upload_max_filesize` — batches now capped at 50MB, auto-split into sub-batches when needed.

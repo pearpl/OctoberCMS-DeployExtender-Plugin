@@ -10,3 +10,5 @@
     - "Fixed progress bar showing undefined stats on completion."
     - "Session-resilient sync counters for accurate finalize stats."
     - "Added remote extraction result verification on push."
+1.0.3:
+    - "Fixed composer dependency: support RainLab Deploy v2 and v3."
